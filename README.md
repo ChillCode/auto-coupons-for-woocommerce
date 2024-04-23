@@ -1,0 +1,1 @@
+# auto-coupons-for-woocommerce
