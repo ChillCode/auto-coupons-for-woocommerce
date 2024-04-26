@@ -2,4 +2,6 @@
 
 Apply WooCommerce coupons automatically as a discount.
 
-This plugin have been starcted from a global one, have been not tested by his own, so is not available on WP plugin repository.
+This plugin was stracted from a global plugin, it has been not tested, so is not available on WP plugin repository.
+
+Intended for develeopment use.
