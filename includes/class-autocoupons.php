@@ -15,6 +15,8 @@ use WC_Coupon;
 use WC_Discounts;
 use WC_Product;
 
+use Automattic\WooCommerce\Utilities\DiscountsUtil;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -394,7 +396,7 @@ class AutoCoupons {
 				$check_emails[] = $billing_email;
 			}
 
-			if ( ! WC()->cart->is_coupon_emails_allowed( $check_emails, $restrictions ) ) {
+			if ( ! DiscountsUtil::is_coupon_emails_allowed( $check_emails, $restrictions ) ) {
 				return false;
 			} else {
 				return true;
@@ -520,7 +522,7 @@ class AutoCoupons {
 
 				$restrictions = $coupon->get_email_restrictions();
 
-				if ( is_array( $restrictions ) && 0 < count( $restrictions ) && ! WC()->cart->is_coupon_emails_allowed( $check_emails, $restrictions ) ) {
+				if ( is_array( $restrictions ) && 0 < count( $restrictions ) && ! DiscountsUtil::is_coupon_emails_allowed( $check_emails, $restrictions ) ) {
 					WC()->cart->remove_coupon( $coupon_code );
 				} elseif ( ! in_array( $coupon_code, $applied_coupons, true ) && true === WC()->cart->add_discount( $coupon_code ) ) {
 					array_push( $applied_coupons, $coupon_code );
