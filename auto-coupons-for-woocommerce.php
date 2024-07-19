@@ -12,7 +12,7 @@
  * Plugin URI: https://github.com/chillcode/auto-coupons-for-woocommerce
  * Description: Apply WooCommerce coupons automatically as a discount.
  * Version: 1.0.2
- * Requires at least: 6.6
+ * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: Chillcode
  * Author URI: https://github.com/chillcode/
