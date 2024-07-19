@@ -29,7 +29,7 @@ defined( 'ABSPATH' ) || exit;
 
 define( 'ACWC_PLUGIN_PATH', __DIR__ );
 define( 'ACWC_PLUGIN_FILE', __FILE__ );
-define( 'ACWC_PLUGIN_VERSION', '1.0.1' );
+define( 'ACWC_PLUGIN_VERSION', '1.0.2' );
 
 $woocommerce_plugin_path = trailingslashit( WP_PLUGIN_DIR ) . 'woocommerce/woocommerce.php';
 
