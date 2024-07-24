@@ -300,7 +300,7 @@ class AutoCoupons {
 
 			$current_cupon = self::get_coupon_object( $coupon_id );
 
-			$discount_product_total_amount += $current_cupon->get_discount_amount( $row_price, WC()->cart->get_cart_item( $coupon_cart_item_key ) );
+			$discount_product_total_amount += $current_cupon->get_discount_amount( $row_price, $cart->get_cart_item( $coupon_cart_item_key ) );
 		}
 
 		$product_subtotal = '<del style="color:red">' . wc_price( $row_price ) . '</del><div>' . wc_price( $row_price - $discount_product_total_amount ) . '</div>';
@@ -453,40 +453,39 @@ class AutoCoupons {
 			/** Remove all the auto coupons to prevent updated or previously applied coupons. */
 			$cart->remove_coupon( $coupon_code );
 
-			if ( self::is_valid( $coupon ) ) {
-				if ( $cart->add_discount( $coupon_code ) === true ) {
+			if ( ! self::is_valid( $coupon ) || $cart->add_discount( $coupon_code ) !== true ) {
+				continue;
+			}
 
-					$discount_product = false;
-					$discount_symbol  = '%';
+			$discount_product = false;
+			$discount_symbol  = '%';
 
-					switch ( $coupon->get_discount_type() ) {
-						case 'percent':
-							$discount_product = true;
-							break;
-						case 'fixed_product':
-							$discount_product = true;
-							// Not a product discount but share same symbol.
-						case 'fixed':
-							$discount_symbol = get_woocommerce_currency_symbol();
-					}
+			switch ( $coupon->get_discount_type() ) {
+				case 'percent':
+					$discount_product = true;
+					break;
+				case 'fixed_product':
+					$discount_product = true;
+					// Not a product discount but share same symbol.
+				case 'fixed':
+					$discount_symbol = get_woocommerce_currency_symbol();
+			}
 
-					if ( $coupon->is_valid_for_cart() ) {
+			if ( $coupon->is_valid_for_cart() ) {
+				if ( true === is_cart() ) {
+					// translators: Text to show when cart coupons are applied.
+					$apply_coupons_noticies[] = sprintf( __( 'A %1$s discount has been applied to the cart.', 'auto-coupons-for-woocommerce' ), $coupon->get_amount() . $discount_symbol );
+				}
+			}
+
+			if ( $discount_product ) {
+				foreach ( $cart->get_cart() as $cart_item_key => $cart_item ) {
+					if ( $coupon->is_valid_for_product( $cart_item['data'] ) ) {
+						self::$discount_applied_coupons[ $cart_item['data']->get_id() ][ $coupon_id ] = $cart_item_key;
+
 						if ( true === is_cart() ) {
-							// translators: Text to show when cart coupons are applied.
-							$apply_coupons_noticies[] = sprintf( __( 'A %1$s discount has been applied to the cart.', 'auto-coupons-for-woocommerce' ), $coupon->get_amount() . $discount_symbol );
-						}
-					}
-
-					if ( $discount_product ) {
-						foreach ( $cart->get_cart() as $cart_item_key => $cart_item ) {
-							if ( $coupon->is_valid_for_product( $cart_item['data'] ) ) {
-								self::$discount_applied_coupons[ $cart_item['data']->get_id() ][ $coupon_id ] = $cart_item_key;
-
-								if ( true === is_cart() ) {
-									// translators: Text to show when product coupons are applied.
-									$apply_coupons_noticies[] = sprintf( __( 'A %1$s discount has been applied to the following product %2$s.', 'auto-coupons-for-woocommerce' ), $coupon->get_amount() . $discount_symbol, $cart_item['data']->get_name() );
-								}
-							}
+							// translators: Text to show when product coupons are applied.
+							$apply_coupons_noticies[] = sprintf( __( 'A %1$s discount has been applied to the following product %2$s.', 'auto-coupons-for-woocommerce' ), $coupon->get_amount() . $discount_symbol, $cart_item['data']->get_name() );
 						}
 					}
 				}
