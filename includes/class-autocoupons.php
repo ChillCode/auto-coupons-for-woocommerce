@@ -2,8 +2,8 @@
 /**
  * AutoCoupons
  *
- * @author    ChillCode
- * @copyright Copyright (c) 2024, ChillCode All rights reserved.
+ * @author    Chillcode
+ * @copyright Copyright (c) 2003-2024, Chillcode All rights reserved.
  * @license   http://www.gnu.org/licenses/gpl-3.0.html GNU General Public License v3.0
  * @package   Auto Coupons for WooCommerce
  */
@@ -15,66 +15,145 @@ use WC_Coupon;
 use WC_Discounts;
 use WC_Product;
 
-use Automattic\WooCommerce\Utilities\DiscountsUtil;
-
 defined( 'ABSPATH' ) || exit;
 
 /**
  * AutoCoupons class.
  */
 class AutoCoupons {
-	private $discount_available_coupons = array(); // PHPCS:ignore Squiz.Commenting.VariableComment.Missing
-	private $discount_coupon_objects    = array(); // PHPCS:ignore Squiz.Commenting.VariableComment.Missing
-	private $discount_applied_coupons   = array(); // PHPCS:ignore Squiz.Commenting.VariableComment.Missing
+	/**
+	 * Coupons available as discounts.
+	 *
+	 * @var array
+	 */
+	private static $discount_available_coupons = array();
 
-	protected static $instance = null; // PHPCS:ignore Squiz.Commenting.VariableComment.Missing
+	/**
+	 * Coupons object array.
+	 *
+	 * @var array
+	 */
+	private static $discount_coupon_objects = array();
+
+	/**
+	 * Coupons applied as discounts.
+	 *
+	 * @var array
+	 */
+	private static $discount_applied_coupons = array();
+
+	/**
+	 * Singleton instance.
+	 *
+	 * @var AutoCoupons
+	 */
+	private static $instance = null;
 
 	/**
 	 * Constructor.
 	 */
 	public function __construct() {
+		/**
+		 * Check if Woo is installed and active otherwise show a notice on plugins page.
+		 */
+		$woocommerce_plugin_path = trailingslashit( WP_PLUGIN_DIR ) . 'woocommerce/woocommerce.php';
 
+		if (
+			in_array( $woocommerce_plugin_path, wp_get_active_and_valid_plugins(), true ) ||
+			is_multisite() && in_array( $woocommerce_plugin_path, wp_get_active_network_plugins(), true )
+		) {
+			add_action(
+				'plugins_loaded',
+				array( __CLASS__, 'plugins_loaded' )
+			);
+		} else {
+			add_action(
+				'admin_notices',
+				function () {
+					global $pagenow;
+
+					if ( 'plugins.php' === $pagenow ) {
+						printf( '<div class="%1$s"><p>%2$s</p></div>', 'notice notice-error is-dismissible', esc_html__( 'Auto Coupons for WooCommerce requires WooCommerce to be installed and active.', 'auto-coupons-for-woocommerce' ) );
+					}
+				}
+			);
+		}
+	}
+
+	/**
+	 * Plugins loaded.
+	 */
+	public static function plugins_loaded() {
 		if ( is_admin() ) {
-			add_filter( 'woocommerce_general_settings', array( $this, 'woocommerce_general_settings' ) );
+			add_filter( 'woocommerce_general_settings', array( __CLASS__, 'woocommerce_general_settings' ) );
 		}
 
-		if ( get_option( '_acwc_enable_auto_coupons' ) !== 'yes' ) {
+		if ( ! wc_coupons_enabled() || ! self::auto_coupons_enabled() ) {
 			return;
 		}
 
-		add_filter( 'woocommerce_coupon_error', array( $this, 'woocommerce_coupon_error' ), 10, 3 );
-
 		if ( is_admin() ) {
-			add_action( 'woocommerce_coupon_options', array( $this, 'woocommerce_coupon_options' ), 10, 1 );
-			add_action( 'woocommerce_coupon_options_save', array( $this, 'woocommerce_coupon_options_save' ), 10, 2 );
+			add_action( 'woocommerce_coupon_options', array( __CLASS__, 'woocommerce_coupon_options' ), 10, 2 );
+			add_action( 'woocommerce_coupon_options_save', array( __CLASS__, 'woocommerce_coupon_options_save' ), 10, 1 );
 		}
 
-		add_action( 'woocommerce_after_calculate_totals', array( $this, 'woocommerce_after_calculate_totals' ) );
-		add_action( 'woocommerce_after_checkout_validation', array( $this, 'woocommerce_after_checkout_validation' ), -1, 1 );
+		self::$discount_available_coupons = self::get_automated_coupons();
 
-		add_filter( 'woocommerce_cart_totals_coupon_label', array( $this, 'woocommerce_cart_totals_coupon_label' ), 10, 2 );
-		add_filter( 'woocommerce_cart_totals_coupon_html', array( $this, 'woocommerce_cart_totals_coupon_html' ), 10, 3 );
-		add_filter( 'woocommerce_cart_product_subtotal', array( $this, 'woocommerce_cart_product_subtotal' ), 10, 4 );
+		if ( ! empty( self::$discount_available_coupons ) ) {
 
-		$this->discount_available_coupons = $this->get_automated_coupons();
+			add_filter( 'woocommerce_coupon_error', array( __CLASS__, 'woocommerce_coupon_error' ), 10, 3 );
+			add_filter( 'woocommerce_coupon_message', array( __CLASS__, 'woocommerce_coupon_message' ), 10, 3 );
+
+			add_action( 'woocommerce_after_calculate_totals', array( __CLASS__, 'woocommerce_after_calculate_totals' ) );
+			add_action( 'woocommerce_after_checkout_validation', array( __CLASS__, 'woocommerce_after_checkout_validation' ), -1, 0 );
+
+			add_filter( 'woocommerce_cart_totals_coupon_label', array( __CLASS__, 'woocommerce_cart_totals_coupon_label' ), 10, 2 );
+			add_filter( 'woocommerce_cart_totals_coupon_html', array( __CLASS__, 'woocommerce_cart_totals_coupon_html' ), 10, 3 );
+			add_filter( 'woocommerce_cart_product_subtotal', array( __CLASS__, 'woocommerce_cart_product_subtotal' ), 10, 4 );
+		}
+	}
+
+	/**
+	 * Check if auto coupons are enabled.
+	 * Filterable.
+	 *
+	 * @since  1.0.2
+	 *
+	 * @return bool
+	 */
+	public static function auto_coupons_enabled() {
+		return apply_filters( 'woocommerce_enable_auto_coupons', 'yes' === get_option( 'acwc_enable_auto_coupons' ) );
+	}
+
+	/**
+	 * Check if coupon is set as automatic discount.
+	 *
+	 * @param WC_Coupon $coupon Coupon.
+	 */
+	private static function coupon_is_autoapply( WC_Coupon $coupon ) {
+		return ( filter_var( $coupon->get_meta( '_acwc_discount_autoapply', true ), FILTER_VALIDATE_BOOLEAN ) ? true : false );
 	}
 
 	/***
-	 * Get an instance of an automated coupon by id
+	 * Get coupon by id
 	 *
 	 * @param int $coupon_id Coupon ID.
 	 */
-	private function get_coupon_object( int $coupon_id ): WC_Coupon {
-		if ( ! isset( $this->discount_coupon_objects[ $coupon_id ] ) ) {
-			$this->discount_coupon_objects[ $coupon_id ] = new WC_Coupon( $coupon_id );
+	private static function get_coupon_object( int $coupon_id ): WC_Coupon {
+		if ( ! isset( self::$discount_coupon_objects[ $coupon_id ] ) ) {
+			self::$discount_coupon_objects[ $coupon_id ] = new WC_Coupon( $coupon_id );
 		}
-		return $this->discount_coupon_objects[ $coupon_id ];
+		return self::$discount_coupon_objects[ $coupon_id ];
 	}
 
-	/***
-	 * Get al list of all coupons marked as automatic.
+	/**
+	 * Get all coupons marked as automatic.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return mixed
 	 */
-	private function get_automated_coupons() {
+	public static function get_automated_coupons() {
 		$get_automated_coupons = wp_cache_get( 'get_automated_coupons' );
 
 		if ( false !== $get_automated_coupons ) {
@@ -95,17 +174,13 @@ class AutoCoupons {
 			'meta_query'       => array(
 				'relation' => 'AND',
 				array(
-					'key'   => 'discount_autoapply',
+					'key'   => '_acwc_discount_autoapply',
 					'value' => 1,
 				),
 			),
 		);
 
-		$coupons = get_posts( $args );
-
-		foreach ( $coupons as $coupon_id ) {
-			array_push( $get_automated_coupons, $coupon_id );
-		}
+		$get_automated_coupons = get_posts( $args );
 
 		wp_cache_set( 'get_automated_coupons', $get_automated_coupons );
 
@@ -113,27 +188,26 @@ class AutoCoupons {
 	}
 
 	/**
-	 * Add an additional checkbox to enable automatic coupons.
+	 * Add an additional checkbox to Woo general settings to enable/disable automatic coupons.
 	 *
 	 * @param array $settings Settings Tab.
 	 */
-	public function woocommerce_general_settings( array $settings ) {
+	public static function woocommerce_general_settings( array $settings ) {
 		$updated_settings = array();
 
 		foreach ( $settings as $section ) {
-
-			if ( isset( $section['id'] ) && 'general_options' === $section['id'] && isset( $section['type'] ) && 'sectionend' === $section['type'] ) {
+			$updated_settings[] = $section;
+			if ( isset( $section['id'] ) && 'woocommerce_enable_coupons' === $section['id'] ) {
 				$updated_settings[] = array(
-					'desc'     => __( 'Allow coupons to apply automatically', 'auto-coupons-for-woocommerce' ),
-					'desc_tip' => __( 'Apply coupons automatically without user interaction.', 'auto-coupons-for-woocommerce' ),
-					'id'       => '_acwc_enable_auto_coupons',
-					'default'  => 'no',
-					'type'     => 'checkbox',
-					'css'      => 'width:140px;',
+					'desc'            => __( 'Allow coupons to apply automatically', 'auto-coupons-for-woocommerce' ),
+					'desc_tip'        => __( 'Coupons can be applied automatically without user interaction.', 'auto-coupons-for-woocommerce' ),
+					'id'              => 'acwc_enable_auto_coupons',
+					'default'         => 'no',
+					'type'            => 'checkbox',
+					'checkboxgroup'   => '',
+					'show_if_checked' => 'yes',
 				);
 			}
-
-			$updated_settings[] = $section;
 		}
 
 		return $updated_settings;
@@ -142,49 +216,38 @@ class AutoCoupons {
 	/**
 	 * Add a checkbox to the coupon page to make it automatic.
 	 *
-	 * @param int $coupon_id Coupon ID.
+	 * @param int       $coupon_id Coupon ID.
+	 * @param WC_Coupon $coupon Coupon.
 	 */
-	public function woocommerce_coupon_options( $coupon_id ) {
+	public static function woocommerce_coupon_options( $coupon_id, $coupon ) {
 		woocommerce_wp_checkbox(
 			array(
 				'id'          => 'discount_autoapply',
 				'label'       => __( 'Allow automatic application', 'auto-coupons-for-woocommerce' ),
 				'description' => __( 'Apply this coupon automatically as a discount.', 'auto-coupons-for-woocommerce' ),
-				'value'       => $this->is_autoapply( $coupon_id ) ? 'yes' : 'no ',
+				'value'       => self::coupon_is_autoapply( $coupon ) ? 'yes' : 'no ',
 			)
 		);
 	}
 
 	/**
-	 * Coupon is Autoapply.
+	 * Save auto coupon options.
+	 *
+	 * @since 1.0.0
 	 *
 	 * @param int $coupon_id Coupon ID.
 	 */
-	private function is_autoapply( int $coupon_id ) {
-
-		return ( filter_var( get_post_meta( $coupon_id, 'discount_autoapply', true ), FILTER_VALIDATE_BOOLEAN ) ? true : false );
-	}
-
-	/**
-	 * Save settings.
-	 *
-	 * @param int       $coupon_id Coupon ID.
-	 * @param WC_Coupon $coupon Coupon.
-	 */
-	public function woocommerce_coupon_options_save( int $coupon_id, WC_Coupon $coupon ) {
-		if ( empty( $_POST['woocommerce_meta_nonce'] ) || ! wp_verify_nonce( filter_input( INPUT_POST, 'woocommerce_meta_nonce', FILTER_SANITIZE_FULL_SPECIAL_CHARS ), 'woocommerce_save_data' ) ) {
+	public static function woocommerce_coupon_options_save( int $coupon_id ) {
+		if (
+			! check_ajax_referer( 'woocommerce_save_data', 'woocommerce_meta_nonce', false ) ||
+			! current_user_can( 'edit_post', $coupon_id )
+		) {
 			return;
 		}
 
-		if ( ! isset( $_POST['discount_autoapply'] ) ) {
-			$discount_autoapply = 0;
-		} else {
-			$discount_autoapply = ( filter_input( INPUT_POST, 'discount_autoapply', FILTER_SANITIZE_FULL_SPECIAL_CHARS ) === 'yes' ? 1 : 0 );
-		}
+		$discount_autoapply = ( filter_input( INPUT_POST, 'discount_autoapply', FILTER_VALIDATE_BOOLEAN ) ) ? true : false;
 
-		$discount_autoapply = ( 1 === $discount_autoapply && in_array( $coupon->get_discount_type(), array_keys( wc_get_coupon_types() ), true ) ) ? 1 : 0;
-
-		update_post_meta( $coupon_id, 'discount_autoapply', $discount_autoapply );
+		update_post_meta( $coupon_id, '_acwc_discount_autoapply', $discount_autoapply );
 	}
 
 	/**
@@ -192,9 +255,8 @@ class AutoCoupons {
 	 *
 	 * Ensures only one instance of AutoCoupons is loaded or can be loaded.
 	 *
-	 * @since 2.1
-	 * @static
-	 * @see WC()
+	 * @since 1.0.0
+	 *
 	 * @return AutoCoupons - Main instance.
 	 */
 	public static function instance() {
@@ -208,65 +270,56 @@ class AutoCoupons {
 	/**
 	 * Returns the subtotal for a cart item adding a discount label.
 	 *
-	 * @since 1.0
+	 * @since 1.0.0
 	 *
 	 * @param string     $product_subtotal Subtotal.
 	 * @param WC_Product $product Product Object.
 	 * @param int        $quantity Quantity.
 	 * @param WC_Cart    $cart Cart Object.
 	 */
-	public function woocommerce_cart_product_subtotal( string $product_subtotal, WC_Product $product, int $quantity, WC_Cart $cart ) {
-		if ( ! isset( $this->discount_applied_coupons[ $product->get_id() ] ) ) {
+	public static function woocommerce_cart_product_subtotal( string $product_subtotal, WC_Product $product, int $quantity, WC_Cart $cart ) {
+		if ( ! isset( self::$discount_applied_coupons[ $product->get_id() ] ) ) {
 			return $product_subtotal;
 		}
 
 		$price = $product->get_price();
 
-		if ( wc_tax_enabled() && ! $cart->get_customer()->get_is_vat_exempt() && $product->is_taxable() ) {
+		if ( ! $cart->get_customer()->get_is_vat_exempt() && $product->is_taxable() ) {
 			if ( $cart->display_prices_including_tax() ) {
-				$row_price        = wc_get_price_including_tax( $product, array( 'qty' => $quantity ) );
-				$product_subtotal = wc_price( $row_price );
-
-				if ( ! wc_prices_include_tax() && $cart->get_subtotal_tax() > 0 ) {
-					$product_subtotal .= ' <small class="tax_label">' . WC()->countries->inc_tax_or_vat() . '</small>';
-				}
+				$row_price = wc_get_price_including_tax( $product, array( 'qty' => $quantity ) );
 			} else {
-				$row_price        = wc_get_price_excluding_tax( $product, array( 'qty' => $quantity ) );
-				$product_subtotal = wc_price( $row_price );
-
-				if ( wc_prices_include_tax() && $cart->get_subtotal_tax() > 0 ) {
-					$product_subtotal .= ' <small class="tax_label">' . WC()->countries->ex_tax_or_vat() . '</small>';
-				}
+				$row_price = wc_get_price_excluding_tax( $product, array( 'qty' => $quantity ) );
 			}
 		} else {
-			$row_price        = $price * $quantity;
-			$product_subtotal = wc_price( $row_price );
+			$row_price = $price * $quantity;
 		}
 
 		$discount_product_total_amount = 0;
 
-		foreach ( $this->discount_applied_coupons[ $product->get_id() ] as $coupon_id => $coupon_cart_item_key ) {
+		foreach ( self::$discount_applied_coupons[ $product->get_id() ] as $coupon_id => $coupon_cart_item_key ) {
 
-			$current_cupon = $this->get_coupon_object( $coupon_id );
+			$current_cupon = self::get_coupon_object( $coupon_id );
 
 			$discount_product_total_amount += $current_cupon->get_discount_amount( $row_price, WC()->cart->get_cart_item( $coupon_cart_item_key ) );
 		}
 
-		return '<del style="color:red">' . wc_price( $row_price ) . '</del><div>' . wc_price( $row_price - $discount_product_total_amount ) . ' <small class="tax_label">' . WC()->countries->inc_tax_or_vat() . '</small></div>';
+		$product_subtotal = '<del style="color:red">' . wc_price( $row_price ) . '</del><div>' . wc_price( $row_price - $discount_product_total_amount ) . '</div>';
+
+		return apply_filters( 'acwc_cart_product_subtotal', $product_subtotal, $row_price, $discount_product_total_amount );
 	}
 
 	/**
 	 * Coupon Label on Cart Page.
 	 *
-	 * @since 1.0
+	 * @since 1.0.0
 	 *
 	 * @param string    $label Label to display.
 	 * @param WC_Coupon $coupon Coupon Object.
 	 */
-	public function woocommerce_cart_totals_coupon_label( string $label, WC_Coupon $coupon ) {
+	public static function woocommerce_cart_totals_coupon_label( string $label, WC_Coupon $coupon ) {
 
-		if ( $coupon && $this->is_autoapply( $coupon->get_id() ) ) {
-			$label = __( 'Discount type', 'auto-coupons-for-woocommerce' ) . ': ' . $coupon->get_amount() . ( ( 'percent' === $coupon->get_discount_type() ) ? '% ' : '€ ' );
+		if ( $coupon && self::coupon_is_autoapply( $coupon ) ) {
+			$label = __( 'Discount type', 'auto-coupons-for-woocommerce' ) . ': ' . $coupon->get_amount() . ( ( 'percent' === $coupon->get_discount_type() ) ? '% ' : get_woocommerce_currency_symbol() );
 		}
 
 		return $label;
@@ -275,14 +328,14 @@ class AutoCoupons {
 	/**
 	 * Html Label on Cart totals.
 	 *
-	 * @since 1.0
+	 * @since 1.0.0
 	 *
 	 * @param string    $coupon_html Html to display.
 	 * @param WC_Coupon $coupon Coupon Object.
 	 * @param string    $discount_amount_html Discounted amount to display.
 	 */
-	public function woocommerce_cart_totals_coupon_html( string $coupon_html, WC_Coupon $coupon, string $discount_amount_html ) {
-		if ( $coupon && $this->is_autoapply( $coupon->get_id() ) ) {
+	public static function woocommerce_cart_totals_coupon_html( string $coupon_html, WC_Coupon $coupon, string $discount_amount_html ) {
+		if ( $coupon && self::coupon_is_autoapply( $coupon ) ) {
 			$coupon_html = $discount_amount_html;
 		}
 
@@ -306,24 +359,22 @@ class AutoCoupons {
 	 * - 112: Maximum spend limit met.
 	 * - 113: Excluded products.
 	 * - 114: Excluded categories.
+	 * - 115:
+	 * - 116:
 	 *
 	 * @param  string    $error_message Message.
 	 * @param  int       $error_code Code.
 	 * @param  WC_Coupon $coupon Coupon.
 	 * @return string
 	 */
-	public function woocommerce_coupon_error( string $error_message, int $error_code, $coupon ) {
-		if ( $coupon && $this->is_autoapply( $coupon->get_id() ) ) {
+	public static function woocommerce_coupon_error( string $error_message, int $error_code, $coupon ) {
+		if ( $coupon && self::coupon_is_autoapply( $coupon ) ) {
 			switch ( $error_code ) {
-				case WC_Coupon::E_WC_COUPON_NOT_YOURS_REMOVED:
-					$error_message = __( 'Sorry, it seems the discount is not yours - it has now been removed from your order.', 'auto-coupons-for-woocommerce' );
-					break;
-				case WC_Coupon::E_WC_COUPON_ALREADY_APPLIED_INDIV_USE_ONLY:
-					$error_message = __( 'Sorry, a discount coupon has already been applied and cannot be used in conjunction with other coupons.', 'auto-coupons-for-woocommerce' );
-					break;
 				case 100:
 				case 101:
+				case WC_Coupon::E_WC_COUPON_NOT_YOURS_REMOVED:
 				case 103:
+				case WC_Coupon::E_WC_COUPON_ALREADY_APPLIED_INDIV_USE_ONLY:
 				case 105:
 				case 106:
 				case 107:
@@ -334,8 +385,9 @@ class AutoCoupons {
 				case 112:
 				case 113:
 				case 114:
+				case 115:
+				case 116:
 					$error_message = '';
-
 					break;
 			}
 		}
@@ -344,94 +396,26 @@ class AutoCoupons {
 	}
 
 	/**
-	 * Check if Coupon is valid for the current user.
+	 * Error Codes:
+	 * - 200: Applied.
+	 * - 201: Removed.
 	 *
-	 * @param WC_Coupon $coupon Coupon.
-	 * @return bool
+	 * @param  string    $message Message.
+	 * @param  int       $message_code Code.
+	 * @param  WC_Coupon $coupon Coupon.
+	 * @return string
 	 */
-	private function is_coupon_valid_for_user( WC_Coupon $coupon ) {
-		$restrictions = $coupon->get_email_restrictions();
-
-		if ( is_array( $restrictions ) && count( $restrictions ) > 0 ) {
-
-			$request_method = filter_input( INPUT_SERVER, 'REQUEST_METHOD', FILTER_SANITIZE_FULL_SPECIAL_CHARS );
-
-			switch ( $request_method ) {
-				case 'GET':
-					$filter_type = INPUT_GET;
+	public static function woocommerce_coupon_message( string $message, int $message_code, $coupon ) {
+		if ( $coupon && self::coupon_is_autoapply( $coupon ) ) {
+			switch ( $message_code ) {
+				case WC_Coupon::WC_COUPON_REMOVED:
+				case WC_Coupon::WC_COUPON_SUCCESS:
+					$message = '';
 					break;
-				case 'POST':
-					$filter_type = INPUT_POST;
-					break;
-				case 'COOKIE':
-					$filter_type = INPUT_COOKIE;
-					break;
-			}
-
-			$billing_email = '';
-
-			$request_security = filter_input( $filter_type, 'security', FILTER_SANITIZE_FULL_SPECIAL_CHARS );
-
-			// Get incoming data only when the user input's the billing_email address in the order review page. Check Ajax call only.
-			if ( ! empty( $request_security ) && wp_verify_nonce( $request_security, 'update-order-review' ) && isset( $_REQUEST['post_data'] ) && is_string( $_REQUEST['post_data'] ) ) {
-				$post_data = filter_input( INPUT_POST, 'post_data', FILTER_SANITIZE_FULL_SPECIAL_CHARS );
-
-				$posted = array();
-
-				parse_str( $post_data, $posted );
-
-				$billing_email = ( ! empty( $posted['billing_email'] ) && filter_var( $posted['billing_email'], FILTER_VALIDATE_EMAIL ) !== false ) ? strtolower( sanitize_email( $posted['billing_email'] ) ) : '';
-
-				unset( $posted );
-			}
-
-			// Populate array with current user email.
-			$current_user = wp_get_current_user();
-
-			$check_emails = array();
-
-			$check_emails[] = strtolower( sanitize_email( $current_user->user_email ) );
-
-			if ( ! empty( $billing_email ) && ! in_array( $billing_email, $check_emails, true ) ) {
-				$check_emails[] = $billing_email;
-			}
-
-			if ( ! DiscountsUtil::is_coupon_emails_allowed( $check_emails, $restrictions ) ) {
-				return false;
-			} else {
-				return true;
 			}
 		}
 
-		return true;
-	}
-
-	/**
-	 * Mark product as discounted in Cart.
-	 *
-	 * @param int  $coupon_id Coupon.
-	 * @param bool $print_notice Print notice after product is marked.
-	 */
-	private function mark_products_as_discounted( int $coupon_id, bool $print_notice = false ) {
-
-		foreach ( WC()->cart->get_cart() as $cart_item_key => $cart_item ) {
-
-			$coupon = $this->get_coupon_object( $coupon_id );
-
-			if ( $this->is_coupon_valid_for_user( $coupon ) && $coupon->is_valid_for_product( $cart_item['data'] ) ) {
-
-				$this->discount_applied_coupons[ $cart_item['data']->get_id() ][ $coupon_id ] = $cart_item_key;
-
-				if ( true === $print_notice ) {
-					// translators: Text to show when coupons applied.
-					wc_add_notice( sprintf( __( 'We have applied a %1$s%% discount on the following product %2$s.', 'auto-coupons-for-woocommerce' ), $coupon->get_amount(), $cart_item['data']->get_name() ), 'notice' );
-				} else {
-					wc_clear_notices();
-				}
-
-				continue;
-			}
-		}
+		return $message;
 	}
 
 	/**
@@ -439,7 +423,7 @@ class AutoCoupons {
 	 *
 	 * @param WC_Coupon $coupon Coupon.
 	 */
-	public function is_valid( WC_Coupon $coupon ) {
+	public static function is_valid( WC_Coupon $coupon ) {
 
 		$discounts = new WC_Discounts( WC()->cart );
 		$valid     = $discounts->is_coupon_valid( $coupon );
@@ -453,11 +437,76 @@ class AutoCoupons {
 	}
 
 	/**
+	 * Apply automatic coupons to WC_Cart.
+	 *
+	 * @param WC_Cart $cart Cart to apply copupons.
+	 *
+	 * @return void
+	 */
+	private static function apply_coupons( WC_Cart $cart ) {
+		$apply_coupons_noticies = array();
+
+		foreach ( self::$discount_available_coupons as $coupon_id ) {
+			$coupon      = self::get_coupon_object( $coupon_id );
+			$coupon_code = $coupon->get_code();
+
+			/** Remove all the auto coupons to prevent updated or previously applied coupons. */
+			$cart->remove_coupon( $coupon_code );
+
+			if ( self::is_valid( $coupon ) ) {
+				if ( $cart->add_discount( $coupon_code ) === true ) {
+
+					$discount_product = false;
+					$discount_symbol  = '%';
+
+					switch ( $coupon->get_discount_type() ) {
+						case 'percent':
+							$discount_product = true;
+							break;
+						case 'fixed_product':
+							$discount_product = true;
+							// Not a product discount but share same symbol.
+						case 'fixed':
+							$discount_symbol = get_woocommerce_currency_symbol();
+					}
+
+					if ( $coupon->is_valid_for_cart() ) {
+						if ( true === is_cart() ) {
+							// translators: Text to show when cart coupons are applied.
+							$apply_coupons_noticies[] = sprintf( __( 'A %1$s discount has been applied to the cart.', 'auto-coupons-for-woocommerce' ), $coupon->get_amount() . $discount_symbol );
+						}
+					}
+
+					if ( $discount_product ) {
+						foreach ( $cart->get_cart() as $cart_item_key => $cart_item ) {
+							if ( $coupon->is_valid_for_product( $cart_item['data'] ) ) {
+								self::$discount_applied_coupons[ $cart_item['data']->get_id() ][ $coupon_id ] = $cart_item_key;
+
+								if ( true === is_cart() ) {
+									// translators: Text to show when product coupons are applied.
+									$apply_coupons_noticies[] = sprintf( __( 'A %1$s discount has been applied to the following product %2$s.', 'auto-coupons-for-woocommerce' ), $coupon->get_amount() . $discount_symbol, $cart_item['data']->get_name() );
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		array_walk(
+			$apply_coupons_noticies,
+			function ( $notice ) {
+				wc_add_notice( $notice, 'notice' );
+			}
+		);
+	}
+
+	/**
 	 * Wrapper to mark products as discounted in cart.
 	 *
 	 * @param WC_Cart $cart Cart Object.
 	 */
-	public function woocommerce_after_calculate_totals( WC_Cart $cart ) {
+	public static function woocommerce_after_calculate_totals( WC_Cart $cart ) {
 
 		if ( is_admin() && ! defined( 'DOING_AJAX' ) ) {
 			return;
@@ -467,69 +516,88 @@ class AutoCoupons {
 			return;
 		}
 
-		$applied_coupons = $cart->get_applied_coupons();
-
-		foreach ( $this->discount_available_coupons as $coupon_id ) {
-			$coupon = $this->get_coupon_object( $coupon_id );
-
-			$coupon_code = $coupon->get_code();
-
-			if ( $this->is_coupon_valid_for_user( $coupon ) && $this->is_valid( $coupon ) ) {
-				if ( ! in_array( $coupon_code, $applied_coupons, true ) ) {
-					if ( WC()->cart->add_discount( $coupon_code ) === true ) {
-						array_push( $applied_coupons, $coupon_code );
-
-						$this->mark_products_as_discounted( $coupon_id, is_cart() );
-					}
-				} else {
-					$this->mark_products_as_discounted( $coupon_id, is_cart() );
-				}
-
-				continue;
-			} else {
-				$cart->remove_coupon( $coupon_code );
-			}
-		}
+		self::apply_coupons( $cart );
 	}
 
 	/**
-	 * Validate Coupon for registered users.
-	 *
-	 * @param array $posted Customer Data.
+	 * Apply coupons after checkout.
 	 */
-	public function woocommerce_after_checkout_validation( $posted ) {
+	public static function woocommerce_after_checkout_validation() {
+		self::apply_coupons( WC()->cart );
+	}
 
-		$applied_coupons = WC()->cart->get_applied_coupons();
+	/**
+	 * Delete postmeta data.
+	 *
+	 * @return int|false
+	 */
+	public static function delete_meta() {
+		/**
+		 * WP_Query
+		 *
+		 * @var WP_Query $wpdb
+		 */
+		global $wpdb;
 
-		foreach ( $this->discount_available_coupons as $coupon_id ) {
-			$coupon = $this->get_coupon_object( $coupon_id );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.DirectQuery
+		return $wpdb->query( "DELETE FROM $wpdb->postmeta WHERE meta_key LIKE '\_acwc%'" );
+	}
 
-			if ( $this->is_valid( $coupon ) ) {
-				$coupon_code = $coupon->get_code();
+	/**
+	 * Delete options.
+	 *
+	 * @return int|false
+	 */
+	private static function delete_options() {
+		/**
+		 * WP_Query
+		 *
+		 * @var WP_Query $wpdb
+		 */
+		global $wpdb;
 
-				$current_user = wp_get_current_user();
-				$check_emails = array();
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.DirectQuery
+		return $wpdb->query( "DELETE FROM $wpdb->options WHERE option_name LIKE 'acwc%'" );
+	}
 
-				$check_emails[] = strtolower( sanitize_email( $current_user->user_email ) );
+	/**
+	 * Activate plugin, keep for meta update.
+	 *
+	 * @return void
+	 */
+	public static function activate() {
+	}
 
-				if ( ! empty( $posted['billing_email'] ) ) {
-					$billing_email = strtolower( sanitize_email( $posted['billing_email'] ) );
+	/**
+	 * Deactivate plugin.
+	 *
+	 * @return void
+	 */
+	public static function deactivate() {
+	}
 
-					if ( ! in_array( $billing_email, $check_emails, true ) ) {
-						$check_emails[] = $billing_email;
-					}
-				}
-
-				$restrictions = $coupon->get_email_restrictions();
-
-				if ( is_array( $restrictions ) && 0 < count( $restrictions ) && ! DiscountsUtil::is_coupon_emails_allowed( $check_emails, $restrictions ) ) {
-					WC()->cart->remove_coupon( $coupon_code );
-				} elseif ( ! in_array( $coupon_code, $applied_coupons, true ) && true === WC()->cart->add_discount( $coupon_code ) ) {
-					array_push( $applied_coupons, $coupon_code );
-
-					$this->mark_products_as_discounted( $coupon_id );
-				}
-			}
-		}
+	/**
+	 * Uninstall plugin.
+	 *
+	 * @return void
+	 */
+	public static function uninstall() {
+		self::delete_meta();
+		self::delete_options();
 	}
 }
+
+register_activation_hook(
+	ACWC_PLUGIN_FILE,
+	array( 'AutoCoupons', 'activate' )
+);
+
+register_deactivation_hook(
+	ACWC_PLUGIN_FILE,
+	array( 'AutoCoupons', 'deactivate' )
+);
+
+register_uninstall_hook(
+	ACWC_PLUGIN_FILE,
+	array( 'AutoCoupons', 'uninstall' )
+);
