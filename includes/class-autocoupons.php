@@ -473,7 +473,7 @@ class AutoCoupons {
 
 			if ( $coupon->is_valid_for_cart() ) {
 				if ( true === is_cart() ) {
-					// translators: Text to show when cart coupons are applied.
+					// translators: Text to show when cart coupons are applied, %1$s can be amount or percentage quantity.
 					$apply_coupons_noticies[] = sprintf( __( 'A %1$s discount has been applied to the cart.', 'auto-coupons-for-woocommerce' ), $coupon->get_amount() . $discount_symbol );
 				}
 			}
@@ -484,7 +484,7 @@ class AutoCoupons {
 						self::$discount_applied_coupons[ $cart_item['data']->get_id() ][ $coupon_id ] = $cart_item_key;
 
 						if ( true === is_cart() ) {
-							// translators: Text to show when product coupons are applied.
+							// translators: Text to show when product coupons are applied, %1$s can be amount or percentage quantity.
 							$apply_coupons_noticies[] = sprintf( __( 'A %1$s discount has been applied to the following product %2$s.', 'auto-coupons-for-woocommerce' ), $coupon->get_amount() . $discount_symbol, $cart_item['data']->get_name() );
 						}
 					}
