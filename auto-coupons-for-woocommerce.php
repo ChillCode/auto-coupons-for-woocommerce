@@ -29,7 +29,7 @@ defined( 'ABSPATH' ) || exit;
 
 define( 'ACWC_PLUGIN_PATH', __DIR__ );
 define( 'ACWC_PLUGIN_FILE', __FILE__ );
-define( 'ACWC_PLUGIN_VERSION', '1.0.2' );
+define( 'ACWC_PLUGIN_VERSION', '1.0.3' );
 
 require_once ACWC_PLUGIN_PATH . '/includes/class-autocoupons.php';
 
