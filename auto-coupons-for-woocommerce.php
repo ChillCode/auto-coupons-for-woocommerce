@@ -11,7 +11,7 @@
  * Plugin Name: Auto Coupons for WooCommerce
  * Plugin URI: https://github.com/chillcode/auto-coupons-for-woocommerce
  * Description: Apply WooCommerce coupons automatically as a discount.
- * Version: 1.0.2
+ * Version: 1.0.3
  * Requires at least: 6.0
  * Requires PHP: 8.1
  * Author: Chillcode
@@ -46,6 +46,11 @@ function ACWC(): ACWC\AutoCoupons { //phpcs:ignore WordPress.NamingConventions.V
 	return ACWC\AutoCoupons::instance();
 }
 
+/**
+ * HPOS compatibility.
+ *
+ * More info: https://developer.woocommerce.com/docs/hpos-extension-recipe-book/
+ */
 add_action(
 	'before_woocommerce_init',
 	function () {
