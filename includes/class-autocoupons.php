@@ -12,7 +12,6 @@ namespace ACWC;
 
 use WC_Cart;
 use WC_Coupon;
-use WC_Discounts;
 use WC_Product;
 
 defined( 'ABSPATH' ) || exit;
@@ -170,7 +169,7 @@ class AutoCoupons {
 			'fields'           => 'ids',
 			'post_type'        => 'shop_coupon',
 			'post_status'      => 'publish',
-			// PHPCS:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+			// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
 			'meta_query'       => array(
 				'relation' => 'AND',
 				array(
@@ -373,8 +372,12 @@ class AutoCoupons {
 				case 100:
 				case 101:
 				case WC_Coupon::E_WC_COUPON_NOT_YOURS_REMOVED:
+					wc_add_notice( $error_message, 'error' );
+					break;
 				case 103:
 				case WC_Coupon::E_WC_COUPON_ALREADY_APPLIED_INDIV_USE_ONLY:
+					wc_add_notice( $error_message, 'error' );
+					break;
 				case 105:
 				case 106:
 				case 107:
@@ -419,24 +422,6 @@ class AutoCoupons {
 	}
 
 	/**
-	 * Check if Coupon is valid.
-	 *
-	 * @param WC_Coupon $coupon Coupon.
-	 */
-	public static function is_valid( WC_Coupon $coupon ) {
-
-		$discounts = new WC_Discounts( WC()->cart );
-		$valid     = $discounts->is_coupon_valid( $coupon );
-
-		if ( is_wp_error( $valid ) ) {
-
-			return false;
-		}
-
-		return $valid;
-	}
-
-	/**
 	 * Apply automatic coupons to WC_Cart.
 	 *
 	 * @param WC_Cart $cart Cart to apply copupons.
@@ -444,7 +429,8 @@ class AutoCoupons {
 	 * @return void
 	 */
 	private static function apply_coupons( WC_Cart $cart ) {
-		$apply_coupons_noticies = array();
+		$coupons_noticies = array();
+		$coupons_is_cart  = is_cart();
 
 		foreach ( self::$discount_available_coupons as $coupon_id ) {
 			$coupon      = self::get_coupon_object( $coupon_id );
@@ -453,7 +439,7 @@ class AutoCoupons {
 			/** Remove all the auto coupons to prevent updated or previously applied coupons. */
 			$cart->remove_coupon( $coupon_code );
 
-			if ( ! self::is_valid( $coupon ) || $cart->add_discount( $coupon_code ) !== true ) {
+			if ( $cart->add_discount( $coupon_code ) !== true ) {
 				continue;
 			}
 
@@ -472,9 +458,9 @@ class AutoCoupons {
 			}
 
 			if ( $coupon->is_valid_for_cart() ) {
-				if ( true === is_cart() ) {
-					// translators: Text to show when cart coupons are applied, %1$s can be amount or percentage quantity.
-					$apply_coupons_noticies[] = sprintf( __( 'A %1$s discount has been applied to the cart.', 'auto-coupons-for-woocommerce' ), $coupon->get_amount() . $discount_symbol );
+				if ( true === $coupons_is_cart ) {
+					// translators: Text to show when cart coupons are applied to cart, %1$s can be amount or percentage quantity.
+					$coupons_noticies[] = sprintf( __( 'A %1$s discount has been applied to the cart.', 'auto-coupons-for-woocommerce' ), $coupon->get_amount() . $discount_symbol );
 				}
 			}
 
@@ -483,9 +469,9 @@ class AutoCoupons {
 					if ( $coupon->is_valid_for_product( $cart_item['data'] ) ) {
 						self::$discount_applied_coupons[ $cart_item['data']->get_id() ][ $coupon_id ] = $cart_item_key;
 
-						if ( true === is_cart() ) {
-							// translators: Text to show when product coupons are applied, %1$s can be amount or percentage quantity.
-							$apply_coupons_noticies[] = sprintf( __( 'A %1$s discount has been applied to the following product %2$s.', 'auto-coupons-for-woocommerce' ), $coupon->get_amount() . $discount_symbol, $cart_item['data']->get_name() );
+						if ( true === $coupons_is_cart ) {
+							// translators: Text to show when product coupons are applied to products, %1$s can be amount or percentage quantity and %2$s the name of the product.
+							$coupons_noticies[] = sprintf( __( 'A %1$s discount has been applied to the following product %2$s.', 'auto-coupons-for-woocommerce' ), $coupon->get_amount() . $discount_symbol, $cart_item['data']->get_name() );
 						}
 					}
 				}
@@ -493,7 +479,7 @@ class AutoCoupons {
 		}
 
 		array_walk(
-			$apply_coupons_noticies,
+			$coupons_noticies,
 			function ( $notice ) {
 				wc_add_notice( $notice, 'notice' );
 			}
@@ -534,7 +520,7 @@ class AutoCoupons {
 		/**
 		 * WP_Query
 		 *
-		 * @var WP_Query $wpdb
+		 * @var \WP_Query $wpdb
 		 */
 		global $wpdb;
 
@@ -551,7 +537,7 @@ class AutoCoupons {
 		/**
 		 * WP_Query
 		 *
-		 * @var WP_Query $wpdb
+		 * @var \WP_Query $wpdb
 		 */
 		global $wpdb;
 
